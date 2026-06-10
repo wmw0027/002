@@ -33,9 +33,11 @@ async function run() {
   if (!existsSync(specFilePath)) {
     mkdirSync('specs', { recursive: true });
     const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
-    writeFileSync('/tmp/prompt.txt', prompt);
-    execSync(`claude --print --prompt-file /tmp/prompt.txt > ${specFilePath}`, {
+    // 将 prompt 写入临时文件，通过 stdin 管道传入 claude
+    writeFileSync('/tmp/prompt.txt', prompt, 'utf8');
+    execSync(`claude --print < /tmp/prompt.txt > ${specFilePath}`, {
       env: { ...process.env, ANTHROPIC_API_KEY },
+      shell: '/bin/bash',
     });
 
     execSync('git config user.name "WorkBuddy Bot"');
