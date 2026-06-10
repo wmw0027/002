@@ -23,6 +23,5 @@ jobs:
       - name: Run WorkBuddy
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: node scripts/workbuddy.mjs
