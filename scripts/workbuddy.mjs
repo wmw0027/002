@@ -1,10 +1,9 @@
-import { execSync } from 'child_process';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
+import { execSync } from 'child_process';
 import { request } from '@octokit/request';
 
 const GITHUB_TOKEN = process.env.GH_TOKEN;
 const REPO = process.env.GITHUB_REPOSITORY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ASSIGNEE = "wmw0027";
 
 const octokit = request.defaults({
@@ -20,28 +19,6 @@ if (!issueNumber) {
   process.exit(1);
 }
 
-async function callClaude(prompt) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${err}`);
-  }
-  const data = await res.json();
-  return data.content[0].text;
-}
-
 async function run() {
   const [owner, repo] = REPO.split('/');
   const { data: issue } = await octokit('GET /repos/{owner}/{repo}/issues/{issue_number}', {
@@ -54,10 +31,9 @@ async function run() {
 
   if (!existsSync(specFilePath)) {
     mkdirSync('specs', { recursive: true });
-    const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
-
-    const specContent = await callClaude(prompt);
-    writeFileSync(specFilePath, specContent, 'utf8');
+    const tasks = parseTasksFromBody(specBody);
+    const specMd = generateSpec(specTitle, specBody, tasks);
+    writeFileSync(specFilePath, specMd, 'utf8');
 
     execSync('git config user.name "WorkBuddy Bot"');
     execSync('git config user.email "bot@workbuddy"');
@@ -67,7 +43,7 @@ async function run() {
   }
 
   const specContent = readFileSync(specFilePath, 'utf8');
-  const tasks = parseTasks(specContent);
+  const tasks = parseTasksFromSpec(specContent);
 
   for (const task of tasks) {
     const { data: newIssue } = await octokit('POST /repos/{owner}/{repo}/issues', {
@@ -90,7 +66,21 @@ async function run() {
   });
 }
 
-function parseTasks(spec) {
+function parseTasksFromBody(body) {
+  const match = body.match(/##\s*功能点\s*\n([\s\S]*?)(?=##|$)/i);
+  if (!match) return [];
+  const lines = match[1].trim().split('\n');
+  const tasks = [];
+  for (const line of lines) {
+    const m = line.match(/^\d+\.\s*\*?\*?(.+?)\*?\*?\s*[:：]?\s*(.*)/);
+    if (m) {
+      tasks.push({ title: m[1].trim(), description: m[2].trim() || m[1].trim() });
+    }
+  }
+  return tasks;
+}
+
+function parseTasksFromSpec(spec) {
   const match = spec.match(/##\s*任务\s*\n([\s\S]*?)(?=##|$)/i);
   if (!match) return [];
   const lines = match[1].split('\n');
@@ -100,6 +90,24 @@ function parseTasks(spec) {
     if (m) tasks.push({ title: m[1], description: m[2] });
   }
   return tasks;
+}
+
+function generateSpec(title, body, tasks) {
+  const taskList = tasks.map(t => `- **${t.title}**: ${t.description}`).join('\n');
+  return `# ${title}
+
+## 需求概述
+
+${body}
+
+## 任务
+
+${taskList}
+
+## 技术方案
+
+根据需求分析，按以上任务顺序依次实现。每个任务完成后提交一个 PR，审查通过后合并。
+`;
 }
 
 run().catch(e => { console.error(e); process.exit(1); });

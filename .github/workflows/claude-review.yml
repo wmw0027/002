@@ -20,7 +20,6 @@ jobs:
 
       - name: Run Review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
