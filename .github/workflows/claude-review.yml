@@ -18,17 +18,12 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
-
       - name: Run Review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > diff.txt
-          claude --print "审查以下 diff，直接输出具体的修改建议（重点逻辑、安全、性能），不要额外解释。" < diff.txt > review.md
-          gh pr review $PR_NUMBER --comment --body "$(cat review.md)"
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          node scripts/claude-review.mjs

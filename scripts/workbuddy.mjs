@@ -5,7 +5,7 @@ import { request } from '@octokit/request';
 const GITHUB_TOKEN = process.env.GH_TOKEN;
 const REPO = process.env.GITHUB_REPOSITORY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ASSIGNEE = "wmw0027";  // 你的 GitHub 用户名
+const ASSIGNEE = "wmw0027";
 
 const octokit = request.defaults({
   headers: {
@@ -18,6 +18,28 @@ const issueNumber = process.env.ISSUE_NUMBER;
 if (!issueNumber) {
   console.error('No issue number');
   process.exit(1);
+}
+
+async function callClaude(prompt) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Anthropic API error ${res.status}: ${err}`);
+  }
+  const data = await res.json();
+  return data.content[0].text;
 }
 
 async function run() {
@@ -33,12 +55,9 @@ async function run() {
   if (!existsSync(specFilePath)) {
     mkdirSync('specs', { recursive: true });
     const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
-    // 将 prompt 写入临时文件，通过 stdin 管道传入 claude
-    writeFileSync('/tmp/prompt.txt', prompt, 'utf8');
-    execSync(`claude --print < /tmp/prompt.txt > ${specFilePath}`, {
-      env: { ...process.env, ANTHROPIC_API_KEY },
-      shell: '/bin/bash',
-    });
+
+    const specContent = await callClaude(prompt);
+    writeFileSync(specFilePath, specContent, 'utf8');
 
     execSync('git config user.name "WorkBuddy Bot"');
     execSync('git config user.email "bot@workbuddy"');
@@ -57,7 +76,6 @@ async function run() {
       body: `关联 SPEC: #${issueNumber}\n${task.description}`,
       labels: ['task'],
     });
-    // 自动分配给你
     await octokit('PATCH /repos/{owner}/{repo}/issues/{issue_number}', {
       owner, repo,
       issue_number: newIssue.number,
@@ -65,7 +83,6 @@ async function run() {
     });
   }
 
-  // 关闭需求 Issue
   await octokit('PATCH /repos/{owner}/{repo}/issues/{issue_number}', {
     owner, repo,
     issue_number: issueNumber,
