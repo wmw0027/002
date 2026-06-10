@@ -27,14 +27,27 @@ function setupGitAuth(owner, repo) {
   execSync('git config user.email "bot@workbuddy"');
 }
 
-function callClaude(prompt) {
-  writeFileSync('/tmp/prompt.txt', prompt, 'utf8');
-  // 使用 stdin 管道方式，兼容新版 Claude CLI
-  execSync('claude --print < /tmp/prompt.txt > /tmp/claude_output.txt', {
-    env: { ...process.env, ANTHROPIC_API_KEY },
-    shell: '/bin/bash',
+async function callAI(prompt, maxTokens = 4096) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    }),
   });
-  return readFileSync('/tmp/claude_output.txt', 'utf8');
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Anthropic API error ${res.status}: ${err}`);
+  }
+  const data = await res.json();
+  return data.content[0].text;
 }
 
 async function run() {
@@ -52,8 +65,15 @@ async function run() {
   // 1. 生成 SPEC（若不存在）
   if (!existsSync(specFilePath)) {
     mkdirSync('specs', { recursive: true });
-    const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
-    const specContent = callClaude(prompt);
+    let specContent;
+    try {
+      const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
+      specContent = await callAI(prompt);
+    } catch (e) {
+      console.log('AI SPEC generation failed, using structured fallback:', e.message);
+      const tasks = parseTasksFromBody(specBody);
+      specContent = generateSpec(specTitle, specBody, tasks);
+    }
     writeFileSync(specFilePath, specContent, 'utf8');
 
     execSync(`git add ${specFilePath}`);
@@ -93,7 +113,14 @@ async function run() {
 
     const projectTree = getProjectTree();
     const codePrompt = `你是全栈工程师。项目根目录内容如下：\n${projectTree}\n\n根据以下需求和项目结构，编写完整的代码变更。直接输出所有需要新增或修改的文件路径和内容，用以下格式：\n\n--- FILE: path/to/file ---\n文件内容\n--- END FILE ---\n\n需求：\n${task.title}\n${task.description}\n\n技术方案参考：\n${specContent.substring(0, 2000)}`;
-    const codeOutput = callClaude(codePrompt);
+    let codeOutput;
+    try {
+      codeOutput = await callAI(codePrompt, 8192);
+    } catch (e) {
+      console.log(`  AI code gen failed: ${e.message}, skipping`);
+      execSync('git checkout main');
+      continue;
+    }
 
     // 4. 解析输出并写入文件
     const fileBlocks = codeOutput.match(/--- FILE: (.+?) ---\n([\s\S]*?)--- END FILE ---/g);
@@ -170,6 +197,27 @@ function parseTasks(spec) {
     if (m) tasks.push({ title: m[1].trim(), description: m[2].trim() });
   }
   return tasks;
+}
+
+function parseTasksFromBody(body) {
+  const match = body.match(/##\s*功能点\s*\n([\s\S]*?)(?=##|$)/i);
+  if (!match) return [];
+  const lines = match[1].trim().split('\n');
+  const tasks = [];
+  for (const line of lines) {
+    const m = line.match(/^\d+\.\s*([^:：]+)[:：]?\s*(.*)/);
+    if (m) {
+      const title = m[1].trim();
+      const desc = m[2].trim() || title;
+      tasks.push({ title, description: desc });
+    }
+  }
+  return tasks;
+}
+
+function generateSpec(title, body, tasks) {
+  const taskList = tasks.map(t => `- **${t.title}**: ${t.description}`).join('\n');
+  return `# ${title}\n\n## 需求概述\n\n${body}\n\n## 任务\n\n${taskList}\n\n## 技术方案\n\n根据需求分析，按以上任务顺序依次实现。每个任务完成后提交一个 PR。\n`;
 }
 
 run().catch(e => { console.error(e); process.exit(1); });
