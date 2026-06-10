@@ -1,3 +1,5 @@
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
+import { execSync } from 'child_process';
 import { request } from '@octokit/request';
 
 const GITHUB_TOKEN = process.env.GH_TOKEN;
@@ -23,25 +25,27 @@ async function run() {
     owner, repo, issue_number: issueNumber,
   });
 
-  const issueBody = issue.body || '';
+  const specTitle = issue.title;
+  const specBody = issue.body || '';
+  const specFilePath = `specs/${issueNumber}-spec.md`;
 
-  // 从 Issue body 的结构化语法中解析任务
-  // 支持两种格式：
-  //   1. ## 任务 / - **标题**: 描述
-  //   2. ## 功能点 / 1. 标题: 描述
-  const tasks = parseTasks(issueBody);
+  if (!existsSync(specFilePath)) {
+    mkdirSync('specs', { recursive: true });
+    const tasks = parseTasksFromBody(specBody);
+    const specMd = generateSpec(specTitle, specBody, tasks);
+    writeFileSync(specFilePath, specMd, 'utf8');
 
-  if (tasks.length === 0) {
-    console.log('未找到结构化任务。请在 Issue body 中使用以下格式之一：');
-    console.log('  ## 任务');
-    console.log('  - **标题**: 描述');
-    console.log('  或');
-    console.log('  ## 功能点');
-    console.log('  1. 标题: 描述');
-    process.exit(0);
+    execSync('git config user.name "WorkBuddy Bot"');
+    execSync('git config user.email "bot@workbuddy"');
+    execSync(`git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${owner}/${repo}.git`);
+    try { execSync('git config --local --unset-all http.https://github.com/.extraheader'); } catch {}
+    execSync(`git add ${specFilePath}`);
+    execSync(`git commit -m "Auto-generate SPEC for #${issueNumber}"`);
+    execSync('git push');
   }
 
-  console.log(`解析到 ${tasks.length} 个任务，开始创建子 Issue...`);
+  const specContent = readFileSync(specFilePath, 'utf8');
+  const tasks = parseTasksFromSpec(specContent);
 
   for (const task of tasks) {
     const { data: newIssue } = await octokit('POST /repos/{owner}/{repo}/issues', {
@@ -55,7 +59,6 @@ async function run() {
       issue_number: newIssue.number,
       assignees: [ASSIGNEE],
     });
-    console.log(`  已创建 #${newIssue.number}: ${task.title}`);
   }
 
   // 关闭需求 Issue
@@ -64,47 +67,50 @@ async function run() {
     issue_number: issueNumber,
     state: 'closed',
   });
-  console.log(`需求 Issue #${issueNumber} 已关闭`);
 }
 
-function parseTasks(body) {
-  // 优先匹配 ## 任务 格式
-  const taskMatch = body.match(/##\s*任务\s*\n([\s\S]*?)(?=##|$)/i);
-  if (taskMatch) {
-    return parseTaskList(taskMatch[1]);
-  }
-
-  // 其次匹配 ## 功能点 格式
-  const pointMatch = body.match(/##\s*功能点\s*\n([\s\S]*?)(?=##|$)/i);
-  if (pointMatch) {
-    return parseNumberedList(pointMatch[1]);
-  }
-
-  return [];
-}
-
-function parseTaskList(text) {
-  // - **标题**: 描述
+function parseTasksFromBody(body) {
+  const match = body.match(/##\s*功能点\s*\n([\s\S]*?)(?=##|$)/i);
+  if (!match) return [];
+  const lines = match[1].trim().split('\n');
   const tasks = [];
-  for (const line of text.split('\n')) {
+  for (const line of lines) {
+    const m = line.match(/^\d+\.\s*\*?\*?(.+?)\*?\*?\s*[:：]?\s*(.*)/);
+    if (m) {
+      tasks.push({ title: m[1].trim(), description: m[2].trim() || m[1].trim() });
+    }
+  }
+  return tasks;
+}
+
+function parseTasksFromSpec(spec) {
+  const match = spec.match(/##\s*任务\s*\n([\s\S]*?)(?=##|$)/i);
+  if (!match) return [];
+  const lines = match[1].split('\n');
+  const tasks = [];
+  for (const line of lines) {
     const m = line.match(/- \*\*(.+?)\*\*: (.+)/);
     if (m) tasks.push({ title: m[1].trim(), description: m[2].trim() });
   }
   return tasks;
 }
 
-function parseNumberedList(text) {
-  // 1. 标题: 描述
-  const tasks = [];
-  for (const line of text.split('\n')) {
-    const m = line.match(/^\d+\.\s*\*?\*?(.+?)\*?\*?\s*[:：]?\s*(.*)/);
-    if (m) {
-      const title = m[1].trim();
-      const desc = m[2].trim() || title;
-      tasks.push({ title, description: desc });
-    }
-  }
-  return tasks;
+function generateSpec(title, body, tasks) {
+  const taskList = tasks.map(t => `- **${t.title}**: ${t.description}`).join('\n');
+  return `# ${title}
+
+## 需求概述
+
+${body}
+
+## 任务
+
+${taskList}
+
+## 技术方案
+
+根据需求分析，按以上任务顺序依次实现。每个任务完成后提交一个 PR，审查通过后合并。
+`;
 }
 
 run().catch(e => { console.error(e); process.exit(1); });
