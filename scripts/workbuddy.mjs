@@ -35,8 +35,10 @@ async function run() {
     const specMd = generateSpec(specTitle, specBody, tasks);
     writeFileSync(specFilePath, specMd, 'utf8');
 
+    const remoteUrl = `https://x-access-token:${GITHUB_TOKEN}@github.com/${owner}/${repo}.git`;
     execSync('git config user.name "WorkBuddy Bot"');
     execSync('git config user.email "bot@workbuddy"');
+    execSync(`git remote set-url origin "${remoteUrl}"`);
     execSync(`git add ${specFilePath}`);
     execSync(`git commit -m "Auto-generate SPEC for #${issueNumber}"`);
     execSync('git push');
