@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户登录</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-container {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .login-header h1 {
+      font-size: 24px;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .login-header p {
+      color: #888;
+      font-size: 14px;
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #555;
+    }
+
+    .form-group input {
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s ease;
+      outline: none;
+    }
+
+    .form-group input:focus {
+      border-color: #667eea;
+    }
+
+    .form-group input.error {
+      border-color: #e74c3c;
+    }
+
+    .error-message {
+      color: #e74c3c;
+      font-size: 13px;
+      min-height: 20px;
+      margin-top: 4px;
+    }
+
+    .login-button {
+      padding: 14px 20px;
+      background: #667eea;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease, opacity 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .login-button:hover:not(:disabled) {
+      background: #5a6fd6;
+    }
+
+    .login-button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .spinner {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .login-button.loading .spinner {
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .login-footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    .login-footer a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .login-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <h1>欢迎登录</h1>
+      <p>请使用您的邮箱和密码登录</p>
+    </div>
+    <form class="login-form" id="loginForm" novalidate>
+      <div class="form-group">
+        <label for="email">邮箱</label>
+        <input type="email" id="email" placeholder="请输入邮箱地址" required autocomplete="email">
+        <div class="error-message" id="emailError"></div>
+      </div>
+      <div class="form-group">
+        <label for="password">密码</label>
+        <input type="password" id="password" placeholder="请输入密码" required minlength="6" maxlength="20" autocomplete="current-password">
+        <div class="error-message" id="passwordError"></div>
+      </div>
+      <button type="submit" class="login-button" id="loginButton">
+        <span class="spinner"></span>
+        <span class="button-text">登录</span>
+      </button>
+      <div class="error-message" id="generalError"></div>
+    </form>
+    <div class="login-footer">
+      还没有账号？<a href="#">立即注册</a>
+    </div>
+  </div>
+
+  <script>
+    // Mock 用户数据
+    const MOCK_USERS = [
+      { email: "admin@example.com", password: "123456", name: "管理员" },
+      { email: "user@example.com", password: "654321", name: "普通用户" }
+    ];
+
+    // 模拟登录接口
+    function mockLogin(email, password) {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          const user = MOCK_USERS.find(u => u.email === email && u.password === password);
+          if (user) {
+            resolve({ code: 200, data: { token: "mock_token_" + Date.now(), name: user.name } });
+          } else {
+            reject({ code: 401, message: "邮箱或密码错误" });
+          }
+        }, 1500); // 模拟网络延迟
+      });
+    }
+
+    // DOM 元素
+    const form = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const emailError = document.getElementById('emailError');
+    const passwordError = document.getElementById('passwordError');
+    const generalError = document.getElementById('generalError');
+    const loginButton = document.getElementById('loginButton');
+    const buttonText = loginButton.querySelector('.button-text');
+
+    // 状态管理
+    let isSubmitting = false;
+
+    // 实时校验
+    emailInput.addEventListener('input', function() {
+      if (this.value.trim() === '') {
+        emailError.textContent = '请输入邮箱地址';
+        this.classList.add('error');
+      } else if (!isValidEmail(this.value.trim())) {
+        emailError.textContent = '邮箱格式不正确';
+        this.classList.add('error');
+      } else {
+        emailError.textContent = '';
+        this.classList.remove('error');
+      }
+    });
+
+    passwordInput.addEventListener('input', function() {
+      const val = this.value;
+      if (val === '') {
+        passwordError.textContent = '请输入密码';
+        this.classList.add('error');
+      } else if (val.length < 6 || val.length > 20) {
+        passwordError.textContent = '密码长度6-20位';
+        this.classList.add('error');
+      } else {
+        passwordError.textContent = '';
+        this.classList.remove('error');
+      }
+    });
+
+    // 邮箱格式校验
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    // 表单提交
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      // 防止重复提交
+      if (isSubmitting) return;
+
+      // 清除之前的错误
+      generalError.textContent = '';
+
+      // 二次校验
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      let hasError = false;
+
+      if (email === '') {
+        emailError.textContent = '请输入邮箱地址';
+        emailInput.classList.add('error');
+        hasError = true;
+      } else if (!isValidEmail(email)) {
+        emailError.textContent = '邮箱格式不正确';
+        emailInput.classList.add('error');
+        hasError = true;
+      } else {
+        emailError.textContent = '';
+        emailInput.classList.remove('error');
+      }
+
+      if (password === '') {
+        passwordError.textContent = '请输入密码';
+        passwordInput.classList.add('error');
+        hasError = true;
+      } else if (password.length < 6 || password.length > 20) {
+        passwordError.textContent = '密码长度6-20位';
+        passwordInput.classList.add('error');
+        hasError = true;
+      } else {
+        passwordError.textContent = '';
+        passwordInput.classList.remove('error');
+      }
+
+      if (hasError) return;
+
+      // 进入提交状态
+      isSubmitting = true;
+      loginButton.disabled = true;
+      loginButton.classList.add('loading');
+      buttonText.textContent = '登录中...';
+
+      try {
+        const result = await mockLogin(email, password);
+        // 登录成功
+        console.log('登录成功:', result.data);
+        alert(`登录成功！欢迎回来，${result.data.name}。`);
+        // 这里可以跳转到首页或其他页面
+        // window.location.href = '/dashboard';
+      } catch (error) {
+        // 登录失败
+        generalError.textContent = error.message || '登录失败，请稍后重试。';
+      } finally {
+        // 恢复按钮状态
+        isSubmitting = false;
+        loginButton.disabled = false;
+        loginButton.classList.remove('loading');
+        buttonText.textContent = '登录';
+      }
+    });
+  </script>
+</body>
+</html>
