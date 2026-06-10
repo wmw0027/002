@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { request } from '@octokit/request';
 
 const GITHUB_TOKEN = process.env.GH_TOKEN;
@@ -31,6 +31,7 @@ async function run() {
   const specFilePath = `specs/${issueNumber}-spec.md`;
 
   if (!existsSync(specFilePath)) {
+    mkdirSync('specs', { recursive: true });
     const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
     writeFileSync('/tmp/prompt.txt', prompt);
     execSync(`claude --print --prompt-file /tmp/prompt.txt > ${specFilePath}`, {
