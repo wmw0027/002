@@ -1,3 +1,4 @@
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { request } from '@octokit/request';
 
@@ -24,18 +25,25 @@ async function run() {
     owner, repo, issue_number: issueNumber,
   });
 
-  const issueBody = issue.body || '';
+  const specTitle = issue.title;
+  const specBody = issue.body || '';
+  const specFilePath = `specs/${issueNumber}-spec.md`;
 
-  // 直接从 Issue body 的结构化语法中解析任务
-  // 期望格式：
-  //   ## 任务
-  //   - **标题**: 描述
-  const tasks = parseTasks(issueBody);
+  if (!existsSync(specFilePath)) {
+    mkdirSync('specs', { recursive: true });
+    const tasks = parseTasksFromBody(specBody);
+    const specMd = generateSpec(specTitle, specBody, tasks);
+    writeFileSync(specFilePath, specMd, 'utf8');
 
-  if (tasks.length === 0) {
-    console.log('未找到结构化任务，请确保 Issue body 包含 ## 任务 区域');
-    process.exit(0);
+    execSync('git config user.name "WorkBuddy Bot"');
+    execSync('git config user.email "bot@workbuddy"');
+    execSync(`git add ${specFilePath}`);
+    execSync(`git commit -m "Auto-generate SPEC for #${issueNumber}"`);
+    execSync('git push');
   }
+
+  const specContent = readFileSync(specFilePath, 'utf8');
+  const tasks = parseTasksFromSpec(specContent);
 
   for (const task of tasks) {
     const { data: newIssue } = await octokit('POST /repos/{owner}/{repo}/issues', {
@@ -59,9 +67,22 @@ async function run() {
   });
 }
 
-function parseTasks(body) {
-  // 匹配 ## 任务 区域
-  const match = body.match(/##\s*任务\s*\n([\s\S]*?)(?=##|$)/i);
+function parseTasksFromBody(body) {
+  const match = body.match(/##\s*功能点\s*\n([\s\S]*?)(?=##|$)/i);
+  if (!match) return [];
+  const lines = match[1].trim().split('\n');
+  const tasks = [];
+  for (const line of lines) {
+    const m = line.match(/^\d+\.\s*\*?\*?(.+?)\*?\*?\s*[:：]?\s*(.*)/);
+    if (m) {
+      tasks.push({ title: m[1].trim(), description: m[2].trim() || m[1].trim() });
+    }
+  }
+  return tasks;
+}
+
+function parseTasksFromSpec(spec) {
+  const match = spec.match(/##\s*任务\s*\n([\s\S]*?)(?=##|$)/i);
   if (!match) return [];
   const lines = match[1].split('\n');
   const tasks = [];
@@ -70,6 +91,24 @@ function parseTasks(body) {
     if (m) tasks.push({ title: m[1].trim(), description: m[2].trim() });
   }
   return tasks;
+}
+
+function generateSpec(title, body, tasks) {
+  const taskList = tasks.map(t => `- **${t.title}**: ${t.description}`).join('\n');
+  return `# ${title}
+
+## 需求概述
+
+${body}
+
+## 任务
+
+${taskList}
+
+## 技术方案
+
+根据需求分析，按以上任务顺序依次实现。每个任务完成后提交一个 PR，审查通过后合并。
+`;
 }
 
 run().catch(e => { console.error(e); process.exit(1); });
