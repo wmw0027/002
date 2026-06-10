@@ -4,7 +4,7 @@ import { request } from '@octokit/request';
 
 const GITHUB_TOKEN = process.env.GH_TOKEN;
 const REPO = process.env.GITHUB_REPOSITORY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const ASSIGNEE = "wmw0027";
 
 const octokit = request.defaults({
@@ -27,14 +27,29 @@ function setupGitAuth(owner, repo) {
   execSync('git config user.email "bot@workbuddy"');
 }
 
-function callClaude(prompt) {
-  writeFileSync('/tmp/prompt.txt', prompt, 'utf8');
-  // 使用 stdin 管道方式，兼容新版 Claude CLI
-  execSync('claude --print < /tmp/prompt.txt > /tmp/claude_output.txt', {
-    env: { ...process.env, ANTHROPIC_API_KEY },
-    shell: '/bin/bash',
+async function callDeepSeek(systemPrompt, userPrompt) {
+  const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 8192,
+      temperature: 0.3,
+    }),
   });
-  return readFileSync('/tmp/claude_output.txt', 'utf8');
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`DeepSeek API error ${res.status}: ${err}`);
+  }
+  const data = await res.json();
+  return data.choices[0].message.content;
 }
 
 async function run() {
@@ -52,8 +67,10 @@ async function run() {
   // 1. 生成 SPEC（若不存在）
   if (!existsSync(specFilePath)) {
     mkdirSync('specs', { recursive: true });
-    const prompt = `你是资深架构师。根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`;
-    const specContent = callClaude(prompt);
+    const specContent = await callDeepSeek(
+      '你是资深架构师，擅长输出结构化的技术方案文档。',
+      `根据以下需求生成技术方案文档（Markdown）。必须包含一个"## 任务"章节，用列表项列出开发任务（格式：- **任务标题**: 任务描述）。\n\n需求：\n${specTitle}\n${specBody}`
+    );
     writeFileSync(specFilePath, specContent, 'utf8');
 
     execSync(`git add ${specFilePath}`);
@@ -85,15 +102,17 @@ async function run() {
     });
     console.log(`  创建 Issue #${newIssue.number}`);
 
-    // 3. 调用 Claude 生成代码
+    // 3. 调用 DeepSeek 生成代码
     const branchName = `task/${newIssue.number}-${task.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_').substring(0, 50)}`;
     execSync(`git checkout main`);
     execSync(`git pull origin main`);
     execSync(`git checkout -b ${branchName}`);
 
     const projectTree = getProjectTree();
-    const codePrompt = `你是全栈工程师。项目根目录内容如下：\n${projectTree}\n\n根据以下需求和项目结构，编写完整的代码变更。直接输出所有需要新增或修改的文件路径和内容，用以下格式：\n\n--- FILE: path/to/file ---\n文件内容\n--- END FILE ---\n\n需求：\n${task.title}\n${task.description}\n\n技术方案参考：\n${specContent.substring(0, 2000)}`;
-    const codeOutput = callClaude(codePrompt);
+    const codeOutput = await callDeepSeek(
+      '你是全栈工程师。根据需求直接输出完整的代码变更文件，用指定格式。',
+      `项目根目录内容如下：\n${projectTree}\n\n根据以下需求和项目结构，编写完整的代码变更。直接输出所有需要新增或修改的文件路径和内容，用以下格式：\n\n--- FILE: path/to/file ---\n文件内容\n--- END FILE ---\n\n需求：\n${task.title}\n${task.description}\n\n技术方案参考：\n${specContent.substring(0, 2000)}`
+    );
 
     // 4. 解析输出并写入文件
     const fileBlocks = codeOutput.match(/--- FILE: (.+?) ---\n([\s\S]*?)--- END FILE ---/g);
@@ -111,7 +130,7 @@ async function run() {
       }
       console.log(`  共生成 ${fileBlocks.length} 个文件`);
     } else {
-      console.log('  警告: Claude 未按预期格式输出文件，跳过代码生成');
+      console.log('  警告: DeepSeek 未按预期格式输出文件，跳过代码生成');
     }
 
     // 5. 提交并推送分支
