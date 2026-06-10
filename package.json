@@ -3,5 +3,8 @@
     "check": "npm run lint && npm test",
     "lint": "eslint .",
     "test": "jest"
+  },
+  "dependencies": {
+    "@octokit/request": "^10.0.10"
   }
 }
