@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户登录</title>
+    <link rel="stylesheet" href="styles/login.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>欢迎登录</h1>
+            <p>请使用邮箱和密码登录您的账户</p>
+        </div>
+        <form class="login-form" id="loginForm" novalidate>
+            <div class="form-group">
+                <label for="email">邮箱地址</label>
+                <input type="email" id="email" name="email" placeholder="请输入邮箱地址" required autocomplete="email">
+                <span class="error-message" id="emailError"></span>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" placeholder="请输入密码" required minlength="6" maxlength="20" autocomplete="current-password">
+                <span class="error-message" id="passwordError"></span>
+            </div>
+            <div class="form-actions">
+                <button type="submit" id="loginBtn" class="login-btn">登录</button>
+            </div>
+            <div class="form-footer">
+                <a href="#" class="forgot-password">忘记密码？</a>
+                <span class="register-link">还没有账户？<a href="#">立即注册</a></span>
+            </div>
+        </form>
+        <div class="login-footer">
+            <p>&copy; 2024 登录系统</p>
+        </div>
+    </div>
+    <script type="module" src="scripts/login.js"></script>
+</body>
+</html>
