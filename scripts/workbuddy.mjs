@@ -37,7 +37,8 @@ async function run() {
 
     execSync('git config user.name "WorkBuddy Bot"');
     execSync('git config user.email "bot@workbuddy"');
-    execSync(`git config --local http.https://github.com/.extraheader "AUTHORIZATION: token ${GITHUB_TOKEN}"`);
+    execSync(`git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${owner}/${repo}.git`);
+    try { execSync('git config --local --unset-all http.https://github.com/.extraheader'); } catch {}
     execSync(`git add ${specFilePath}`);
     execSync(`git commit -m "Auto-generate SPEC for #${issueNumber}"`);
     execSync('git push');
