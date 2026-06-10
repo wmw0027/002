@@ -180,12 +180,14 @@ function getProjectTree() {
 }
 
 function parseTasks(spec) {
-  const match = spec.match(/##\s*任务\s*\n([\s\S]*?)(?=##|$)/i);
+  // 匹配 "## 任务" 或 "## 4. 任务" 或 "## 4 任务"
+  let match = spec.match(/##\s*(?:\d+\.?\s*)?任务\s*\n([\s\S]*?)(?=##|$)/i);
   if (!match) return [];
   const lines = match[1].split('\n');
   const tasks = [];
   for (const line of lines) {
-    const m = line.match(/- \*\*(.+?)\*\*: (.+)/);
+    // 匹配 "- **title**: desc" 或 "- **title** desc"
+    const m = line.match(/- \*\*(.+?)\*\*[:：]?\s*(.+)/);
     if (m) tasks.push({ title: m[1].trim(), description: m[2].trim() });
   }
   return tasks;
