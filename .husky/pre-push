@@ -1,0 +1,7 @@
+#!/bin/bash
+echo "Running Trae checks..."
+npm run check
+if [ $? -ne 0 ]; then
+  echo "Check failed, push blocked"
+  exit 1
+fi

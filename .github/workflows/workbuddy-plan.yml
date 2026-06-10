@@ -1,0 +1,31 @@
+name: WorkBuddy Plan
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  plan:
+    if: contains(github.event.issue.labels.*.name, 'spec')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install dependencies
+        run: npm install @octokit/request
+
+      - name: Run WorkBuddy
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: node scripts/workbuddy.mjs
