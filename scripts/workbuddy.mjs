@@ -75,9 +75,11 @@ function parseTasksFromBody(body) {
   const lines = match[1].trim().split('\n');
   const tasks = [];
   for (const line of lines) {
-    const m = line.match(/^\d+\.\s*\*?\*?(.+?)\*?\*?\s*[:：]?\s*(.*)/);
+    const m = line.match(/^\d+\.\s*([^:：]+)[:：]?\s*(.*)/);
     if (m) {
-      tasks.push({ title: m[1].trim(), description: m[2].trim() || m[1].trim() });
+      const title = m[1].trim();
+      const desc = m[2].trim() || title;
+      tasks.push({ title, description: desc });
     }
   }
   return tasks;
