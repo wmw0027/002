@@ -28,7 +28,30 @@ function setupGitAuth(owner, repo) {
 }
 
 async function callAI(prompt, maxTokens = 4096) {
-  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+  if (!ANTHROPIC_API_KEY) throw new Error('API key not set');
+  const isDeepSeek = ANTHROPIC_API_KEY.startsWith('sk-') && !ANTHROPIC_API_KEY.startsWith('sk-ant-');
+
+  if (isDeepSeek) {
+    const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ANTHROPIC_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`DeepSeek API error ${res.status}: ${err}`);
+    }
+    const data = await res.json();
+    return data.choices[0].message.content;
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
